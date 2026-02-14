@@ -113,20 +113,33 @@ Example structure:
 
 ## 💜 Background Story
 
-LumiCap Studio began as an experiment to simplify subtitle workflows for
-creative scripting and After Effects pipelines.
+LumiCap Studio began as a simple idea:
 
-Very quickly, the need for structure emerged: - Reusable grouping
-logic - Style propagation - Protect mechanisms - Persistent project
-states
+"Wouldn't it be nice if subtitles weren't painful?"
 
-Instead of patching features onto a single export script, the project
-evolved into a full engine architecture --- separating logic from
-interface and defining a native project format.
+It was supposed to be a small export helper.
+
+Then ADHD kicked in.
+
+What followed was not a patch.
+It was escalation.
+
+- Reusable grouping logic  
+- Style propagation  
+- Protection mechanisms  
+- Persistent project states  
+- A native project format  
+- A full engine architecture  
+
+Instead of stacking features onto one script,
+the project evolved into a structured system —
+separating core logic from interface layers
+and defining its own framework.
 
 LumiCap is not just a subtitle tool.
 
-It is a caption engine framework --- designed to grow.
+It is what happens
+when engineering hyperfocus meets ADHD.
 
 ------------------------------------------------------------------------
 
