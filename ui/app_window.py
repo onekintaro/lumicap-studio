@@ -1,8 +1,9 @@
 import customtkinter as ctk
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 import json
 
+from ui.dialogs import open_json_preview, info, warn
 from core.parser import parse_srt
 from core.grouping import build_groups
 from core.protect import toggle_protect
@@ -176,7 +177,7 @@ class LumiCapStudio(ctk.CTk):
 
     def on_refresh(self):
         if not self.srt_path:
-            return messagebox.showinfo("Preview", "Bitte zuerst ein SRT öffnen 🙂")
+            return info("Preview", "Bitte zuerst ein SRT öffnen 🙂")
 
         try:
             with open(self.srt_path, "r", encoding="utf-8") as f:
@@ -198,11 +199,11 @@ class LumiCapStudio(ctk.CTk):
         self.txt_text.delete("1.0", tk.END)
         self.steps_box.delete("1.0", tk.END)
 
-        messagebox.showinfo("Preview", f"✅ Gruppen gebaut: {len(self.groups)} (aus {len(self.entries)} SRT-Einträgen)")
+        info("Preview", f"✅ Gruppen gebaut: {len(self.groups)} (aus {len(self.entries)} SRT-Einträgen)")
 
     def on_export(self):
         if not self.groups:
-            return messagebox.showinfo("Export", "Erst Preview aktualisieren 🙂")
+            return info("Export", "Erst Preview aktualisieren 🙂")
 
         out_path = filedialog.asksaveasfilename(
             title="LumiCap speichern",
@@ -213,7 +214,7 @@ class LumiCapStudio(ctk.CTk):
             return
 
         save_lcap(self.groups, out_path, source_path=self.srt_path, settings=settings, meta=meta)
-        messagebox.showinfo("Export", f"✅ Exportiert:\n{out_path}")
+        info("Export", f"✅ Exportiert:\n{out_path}")
 
     def on_full_preview(self):
         settings = {
@@ -221,23 +222,13 @@ class LumiCapStudio(ctk.CTk):
             "disable_highlight_at_out": self.disable_highlight_at_out,
             "default_style": self.default_style,
         }
+        meta = {"draft": True}
 
-        payload = build_lcap_payload(
-            self.groups,
-            source_path=self.srt_path,
-            settings=settings
-        )
-
-        win = ctk.CTkToplevel(self)
-        win.title("Full Preview 🔎")
-        win.geometry("900x600")
-
-        box = ctk.CTkTextbox(win)
-        box.pack(fill="both", expand=True, padx=12, pady=12)
-        box.insert("1.0", json.dumps(payload, ensure_ascii=False, indent=2))
+        payload = build_lcap_payload(self.groups, source_path=self.srt_path, settings=settings, meta=meta)
+        open_json_preview(self, payload)
 
     def on_timeline_wip(self):
-        messagebox.showinfo(
+        info(
             "Timeline Edit [WIP] 😈",
             "😈 Timeline Edit ist aktuell ein Placebo.\n\n"
             "Nebenwirkungen:\n"
@@ -258,7 +249,7 @@ class LumiCapStudio(ctk.CTk):
 
     def on_apply_batch_style(self):
         if not self.selected_indices:
-            return messagebox.showinfo("Batch", "Bitte Gruppen markieren 🙂")
+            return info("Batch", "Bitte Gruppen markieren 🙂")
 
         style = self.batch_style.get()
         for idx in self.selected_indices:
@@ -270,7 +261,7 @@ class LumiCapStudio(ctk.CTk):
 
     def on_save_detail(self):
         if not self.selected_indices:
-            return messagebox.showinfo("Save", "Keine Gruppe ausgewählt 🙂")
+            return info("Save", "Keine Gruppe ausgewählt 🙂")
 
         idx = self.selected_indices[0]
         g = self.groups[idx]
@@ -287,7 +278,7 @@ class LumiCapStudio(ctk.CTk):
 
     def on_apply_style_same_text(self):
         if not self.selected_indices:
-            return messagebox.showinfo("Apply", "Keine Gruppe ausgewählt 🙂")
+            return info("Apply", "Keine Gruppe ausgewählt 🙂")
 
         idx = self.selected_indices[0]
         key = self.groups[idx].key
@@ -300,11 +291,11 @@ class LumiCapStudio(ctk.CTk):
                 count += 1
 
         self.refresh_group_list()
-        messagebox.showinfo("Apply", f"🔥 '{style}' auf {count} Gruppen mit gleichem Text (key) angewendet.")
+        info("Apply", f"🔥 '{style}' auf {count} Gruppen mit gleichem Text (key) angewendet.")
 
     def on_toggle_protect(self):
         if not self.selected_indices:
-            return messagebox.showinfo("Protect", "Keine Gruppe ausgewählt 🙂")
+            return info("Protect", "Keine Gruppe ausgewählt 🙂")
 
         idx = self.selected_indices[0]
         g = self.groups[idx]
