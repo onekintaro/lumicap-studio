@@ -132,4 +132,7 @@ It is a caption engine framework --- designed to grow.
 
 ## 📄 License
 
-Currently private / internal development. License to be defined.
+Distributed under the GNU GPL-3.0 License.  
+See the LICENSE file for more information.
+
+© 2026 Rebecca
