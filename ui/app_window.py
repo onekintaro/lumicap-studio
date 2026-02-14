@@ -6,7 +6,7 @@ import json
 from core.srt_parser import parse_srt
 from core.grouping import build_groups
 from core.protect import toggle_protect
-from core.export_lcap import export_lcap, build_lcap_payload
+from core.lcap import save_lcap, build_lcap_payload
 from core.utils import first_two_words, normalize_plain_for_key
 
 STYLES = ["Normal", "Chorus", "Emphasis", "Bridge", "Verse", "Spoken", "!"] + [chr(c) for c in range(ord("A"), ord("Z")+1)]
@@ -212,12 +212,7 @@ class LumiCapStudio(ctk.CTk):
         if not out_path:
             return
 
-        export_lcap(
-            self.groups,
-            out_path,
-            source_path=self.srt_path,
-            settings=settings
-        )
+        save_lcap(self.groups, out_path, source_path=self.srt_path, settings=settings, meta=meta)
         messagebox.showinfo("Export", f"✅ Exportiert:\n{out_path}")
 
     def on_full_preview(self):
