@@ -42,6 +42,8 @@ class LumiCapStudio(ctk.CTk):
         self._build_detail()
         self._build_statusbar()
 
+        self.btn_refresh.configure(state="disabled")  # 👈 hier
+
         self.refresh_group_list()
 
     def _build_topbar(self):
@@ -49,10 +51,10 @@ class LumiCapStudio(ctk.CTk):
         self.top.grid(row=0, column=0, columnspan=2, sticky="ew", padx=12, pady=(12, 8))
         self.top.grid_columnconfigure(5, weight=1)
 
-        self.btn_open = ctk.CTkButton(self.top, text="📄 SRT öffnen", command=self.on_open_srt)
+        self.btn_open = ctk.CTkButton(self.top, text="📄 SRT importieren", command=self.on_open_srt)
         self.btn_open.grid(row=0, column=0, padx=10, pady=10)
 
-        self.btn_refresh = ctk.CTkButton(self.top, text="🧪 Preview aktualisieren", command=self.on_refresh)
+        self.btn_refresh = ctk.CTkButton(self.top, text="🔁 Neu gruppieren", command=self.on_refresh)
         self.btn_refresh.grid(row=0, column=1, padx=10, pady=10)
 
         self.btn_export = ctk.CTkButton(self.top, text="💾 Export LumiCap (.lcap)", command=self.on_export)
@@ -174,6 +176,8 @@ class LumiCapStudio(ctk.CTk):
             return
         self.srt_path = path
         self.status.configure(text=f"SRT geladen: {path}")
+        self.btn_refresh.configure(state="normal")
+        self.on_refresh()
 
     def on_refresh(self):
         if not self.srt_path:
