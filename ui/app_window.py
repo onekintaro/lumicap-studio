@@ -3,7 +3,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox
 import json
 
-from core.srt_parser import parse_srt
+from core.parser import parse_srt
 from core.grouping import build_groups
 from core.protect import toggle_protect
 from core.lcap import save_lcap, build_lcap_payload
