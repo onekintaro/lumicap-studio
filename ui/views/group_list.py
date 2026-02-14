@@ -7,7 +7,7 @@ from core.utils import first_two_words
 BASE_STYLES = ["Normal", "Verse", "PreChorus", "Chorus", "Emphasis", "Bridge", "Spoken", "!"]
 ALPHABET_STYLES = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
 
-STYLES = BASE_STYLES + ALPHABET_STYLES
+STYLES = BASE_STYLES #+ ALPHABET_STYLES
 
 
 class GroupListView(ctk.CTkFrame):
@@ -36,6 +36,20 @@ class GroupListView(ctk.CTkFrame):
 
         self.btn_apply_batch = ctk.CTkButton(batch, text="✅ Apply", command=app.on_apply_batch_style)
         self.btn_apply_batch.grid(row=0, column=2, padx=10, pady=10)
+                
+        # NEW row for merge button
+        self.btn_merge = ctk.CTkButton(batch, text="🧬 Merge", command=app.on_merge_groups, state="disabled")
+        self.btn_merge.grid(row=1, column=2, padx=10, pady=(0, 10), sticky="e")
+
+        # optional: hint label links (nice-to-have)
+        self.lbl_merge_hint = ctk.CTkLabel(batch, text="Merge: wähle 2+ aufeinanderfolgende Zeilen", text_color="#999999")
+        self.lbl_merge_hint.grid(row=1, column=0, columnspan=2, padx=10, pady=(0, 10), sticky="w")
+
+    def set_merge_enabled(self, enabled: bool, n: int = 0) -> None:
+        self.btn_merge.configure(
+            state="normal" if enabled else "disabled",
+            text=f"🧬 Merge ({n})" if enabled else "🧬 Merge"
+        )
 
     # --- API für den Controller (app_window) ---
     def get_selected_indices(self) -> list[int]:

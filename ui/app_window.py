@@ -2,10 +2,11 @@ import customtkinter as ctk
 from tkinter import filedialog
 
 from ui.views import TopBar, GroupListView, DetailView, StatusBar
-from ui.dialogs import open_json_preview, info
+from ui.dialogs import open_json_preview, info, MergeDialog
 
 from core.parser import parse_srt
 from core.grouping import build_groups
+from core.merge import merge_groups_smart
 from core.protect import toggle_protect
 from core.lcap import save_lcap, build_lcap_payload, load_lcap_project
 from core.utils import first_two_words, normalize_plain_for_key
@@ -171,15 +172,25 @@ class LumiCapStudio(ctk.CTk):
             "Komm später wieder. Oder klick trotzdem. Ich urteile nicht. 🖤"
         )
 
+    def _selection_is_consecutive(self, indices: list[int]) -> bool:
+        if len(indices) < 2:
+            return False
+        s = sorted(indices)
+        return all(s[i] + 1 == s[i+1] for i in range(len(s)-1))
+
     def on_group_select(self, _evt=None):
         self.selected_indices = self.sidebar.get_selected_indices()
         if not self.selected_indices:
             self.detail.clear()
             self.refresh_group_list()
+            self.sidebar.set_merge_enabled(False, 0)
             return
 
         self.show_detail_for_index(self.selected_indices[0])
         self.refresh_group_list()
+
+        can_merge = self._selection_is_consecutive(self.selected_indices)
+        self.sidebar.set_merge_enabled(can_merge, len(self.selected_indices) if can_merge else 0)
 
     def on_apply_batch_style(self):
         if not self.selected_indices:
@@ -192,6 +203,48 @@ class LumiCapStudio(ctk.CTk):
             self.groups[idx].style = style
 
         self.refresh_group_list()
+
+    def on_merge_groups(self):
+        if not self._selection_is_consecutive(self.selected_indices):
+            return info("Merge", "Bitte 2+ aufeinanderfolgende Gruppen markieren 🙂")
+
+        # Collect selected groups (in order)
+        sel_idx = sorted(self.selected_indices)
+        sel_groups = [self.groups[i] for i in sel_idx]
+
+        # Optional: protect block
+        if any(g.style == "!" for g in sel_groups):
+            return info("Merge", "🛡️ Mindestens eine Gruppe ist geschützt (!). Erst ent-protecten 🙂")
+
+        dlg = MergeDialog(self, sel_groups)
+        self.wait_window(dlg)
+
+        if dlg.result is None:
+            self.statusbar.set("Merge abgebrochen 🙂")
+            return
+
+        merged = dlg.result
+
+        # IMPORTANT: key should match your system (normalize)
+        merged.key = normalize_plain_for_key(merged.text.replace("\r", "\n"), self.normalize_punct_spacing)
+
+        # Replace in list: remove old, insert merged at first index
+        first = sel_idx[0]
+        for i in reversed(sel_idx):
+            del self.groups[i]
+        self.groups.insert(first, merged)
+
+        # Update selection to merged
+        self.selected_indices = [first]
+        self.is_dirty = True
+
+        self.refresh_group_list()
+        self.show_detail_for_index(first)
+
+        # merge button off now (only 1 selected)
+        self.sidebar.set_merge_enabled(False, 0)
+
+        self.statusbar.set(f"🧬 Merged {len(sel_idx)} → 1 (#{first+1:03d}) ✅")
 
     def on_save_detail(self):
         if not self.selected_indices:
