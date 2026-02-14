@@ -22,14 +22,17 @@ class TopBar(ctk.CTkFrame):
         row1 = ctk.CTkFrame(self, corner_radius=10)
         row1.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 6))
 
-        self.btn_open_lcap = ctk.CTkButton(row1, text="📂 Open", width=120, command=getattr(app, "on_open_lcap", app.on_open_lcap))
+        self.btn_open_lcap = ctk.CTkButton(row1, text="📂 Open (.lcap)", width=120, command=getattr(app, "on_open_lcap", app.on_open_lcap))
         self.btn_open_lcap.grid(row=0, column=0, padx=6, pady=6)
 
-        self.btn_save = ctk.CTkButton(row1, text="💾 Save", width=120, command=getattr(app, "on_save", app.on_save))
+        self.btn_save = ctk.CTkButton(row1, text="💾 Save (.lcap)", width=120, command=getattr(app, "on_save", app.on_save))
         self.btn_save.grid(row=0, column=1, padx=6, pady=6)
 
-        self.btn_save_as = ctk.CTkButton(row1, text="💾 Save As", width=120, command=getattr(app, "on_save_as", app.on_save_as))
+        self.btn_save_as = ctk.CTkButton(row1, text="💾 Save As (.lcap)", width=120, command=getattr(app, "on_save_as", app.on_save_as))
         self.btn_save_as.grid(row=0, column=2, padx=6, pady=6)
+
+        self.btn_export = ctk.CTkButton(row1, text="🚀 Export (release .lcap)", width=160, command=getattr(app, "on_export", app.on_export))
+        self.btn_export.grid(row=0, column=3, padx=6, pady=6)
 
         # Spacer
         row1.grid_columnconfigure(6, weight=1)
@@ -38,7 +41,7 @@ class TopBar(ctk.CTkFrame):
         row2 = ctk.CTkFrame(self, corner_radius=10)
         row2.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 10))
 
-        self.btn_import_srt = ctk.CTkButton(row2, text="📄 Import SRT", width=140, command=app.on_open_srt)
+        self.btn_import_srt = ctk.CTkButton(row2, text="📄 Import new SRT", width=140, command=app.on_open_srt)
         self.btn_import_srt.grid(row=0, column=0, padx=6, pady=6)
 
         self.btn_rebuild = ctk.CTkButton(row2, text="🔁 Rebuild", width=140, command=app.on_refresh, state="disabled")
@@ -62,9 +65,12 @@ class TopBar(ctk.CTkFrame):
         app.config(menu=menubar)
 
         file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Open…", command=getattr(app, "on_open_lcap", self._todo))
-        file_menu.add_command(label="Save", command=getattr(app, "on_save", app.on_save))
-        file_menu.add_command(label="Save As…", command=getattr(app, "on_save_as", app.on_save_as))
+        file_menu.add_command(label="Open… (.lcap)", command=getattr(app, "on_open_lcap", self._todo))
+        file_menu.add_command(label="Save (.lcap)", command=getattr(app, "on_save", app.on_save))
+        file_menu.add_command(label="Save As… (.lcap)", command=getattr(app, "on_save_as", app.on_save_as))
+        file_menu.add_separator()
+        file_menu.add_command(label="Import new SRT", command=app.on_open_srt)
+        file_menu.add_command(label="Export (release .lcap)", command=getattr(app, "on_export", app.on_export))
         file_menu.add_separator()
         file_menu.add_command(label="Exit", command=app.destroy)
         menubar.add_cascade(label="File", menu=file_menu)
