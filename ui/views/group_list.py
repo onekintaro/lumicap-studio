@@ -4,9 +4,10 @@ import tkinter as tk
 from core.utils import first_two_words
 
 # keep styles local to view (UI concern)
-STYLES = ["Normal", "Chorus", "Emphasis", "Bridge", "Verse", "Spoken", "!"] + [
-    chr(c) for c in range(ord("A"), ord("Z") + 1)
-]
+BASE_STYLES = ["Normal", "Verse", "PreChorus", "Chorus", "Emphasis", "Bridge", "Spoken", "!"]
+ALPHABET_STYLES = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
+
+STYLES = BASE_STYLES + ALPHABET_STYLES
 
 
 class GroupListView(ctk.CTkFrame):
