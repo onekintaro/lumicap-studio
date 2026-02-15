@@ -18,6 +18,7 @@ class Entry:
 
 @dataclass
 class Group:
+    id: str
     key: str
     style: str
     text: str

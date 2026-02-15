@@ -1,6 +1,6 @@
 # config/styles.py
 
-BASE_STYLES = ["Normal", "Strong", "Weak", "Highlight"]
+BASE_STYLES = ["Normal", "Strong", "Weak", "Highlight", "Final"]
 CUSTOM_STYLES = []
 
 ALPHABET_STYLES = [chr(c) for c in range(ord("A"), ord("Z") + 1)]
@@ -8,7 +8,7 @@ NUMBER_STYLES = [f"Style {i}" for i in range(1, 9)]
 PROTECTED_STYLES = ["!"]
 
 # Base Extra Styles:
-BASE_EXTRA_STYLES = ["Verse", "PreChorus", "Chorus", "Emphasis", "Bridge", "Spoken"]
+BASE_EXTRA_STYLES = ["Verse", "PreChorus", "Chorus", "Final Chorus", "Emphasis", "Bridge", "Spoken", "Intro", "Outro"]
 
 # Options
 ENABLE_BASE_STYLES = True

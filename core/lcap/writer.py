@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from core.models import Group
 from core.lcap.spec import LCAP_FORMAT, LCAP_VERSION, DEFAULT_META
+from core.utils import new_gid
 
 
 def build_lcap_payload(
@@ -21,6 +22,7 @@ def build_lcap_payload(
         "settings": settings or {},
         "groups": [
             {
+                "id": g.id or new_gid(),
                 "key": getattr(g, "key", None),
                 "style": g.style,
                 "text": g.text,

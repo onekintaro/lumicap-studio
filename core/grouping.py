@@ -1,5 +1,7 @@
 from typing import List
+
 from core.models import Entry, Group, Step
+from core.utils import new_gid
 
 def build_groups(
     entries: List[Entry],
@@ -12,6 +14,7 @@ def build_groups(
     for e in entries:
         if cur is None or cur.key != e.key:
             cur = Group(
+                id=new_gid(),
                 key=e.key,
                 style=default_style,
                 text=e.plain,

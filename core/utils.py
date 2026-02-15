@@ -1,4 +1,6 @@
 import re
+import uuid
+
 
 ZERO_WIDTH = ["\u200B", "\u200C", "\u200D", "\uFEFF"]
 
@@ -15,3 +17,6 @@ def first_two_words(text: str) -> str:
     t = " ".join(text.replace("\r", " ").split())
     parts = t.split(" ")
     return " ".join(parts[:2]) if t else "Subtitle"
+
+def new_gid() -> str:
+    return "g_" + uuid.uuid4().hex

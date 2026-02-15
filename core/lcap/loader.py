@@ -5,12 +5,18 @@ from typing import Tuple, List
 
 from core.lcap.validator import validate_lcap
 from core.models import Group, Step
+from core.lcap.upgrade import upgrade_lcap_v1_inplace
 
 
 def load_lcap(path: str) -> dict:
     with open(path, "r", encoding="utf-8") as f:
         payload = json.load(f)
+
+    # upgrade older payloads before validating
+    upgraded = upgrade_lcap_v1_inplace(payload)
+
     validate_lcap(payload)
+    payload["_upgraded"] = upgraded  # optional flag for UI/is_dirty decision
     return payload
 
 
@@ -22,6 +28,7 @@ def groups_from_payload(payload: dict) -> List[Group]:
 
         groups.append(
             Group(
+                id=g.get("id") or "",
                 key=g.get("key", "") or "",
                 style=g.get("style", "Normal"),
                 text=g.get("text", ""),

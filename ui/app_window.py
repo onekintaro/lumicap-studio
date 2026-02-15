@@ -25,6 +25,9 @@ class LumiCapStudio(ctk.CTk):
         self.project_path: str | None = None
         self.is_dirty = False
 
+        self.project_meta: dict = {}
+        self.project_settings: dict = {}
+
         # --- state ---
         self.srt_path: str | None = None
         self.entries = []
@@ -62,16 +65,18 @@ class LumiCapStudio(ctk.CTk):
     # Helpers
     # ---------------------------
     def _current_settings(self) -> dict:
-        return {
+        base = dict(self.project_settings or {})  # <-- enthält ggf. layout
+        base.update({
             "normalize_punct_spacing": self.normalize_punct_spacing,
             "disable_highlight_at_out": self.disable_highlight_at_out,
             "default_style": self.default_style,
-        }
-
+        })
+        return base
+    
     def _current_meta(self) -> dict:
-        # später: draft False beim "Release Export"
-        return {"draft": True}
-
+        base = dict(self.project_meta or {})
+        base.update({"draft": False})
+        return base
     # ---------------------------
     # Data/UI sync
     # ---------------------------
@@ -150,8 +155,9 @@ class LumiCapStudio(ctk.CTk):
             out_path,
             source_path=self.srt_path,
             settings=self._current_settings(),
-            meta=self._current_meta(),
+            meta=(dict(self.project_meta or {}) | {"draft": False}),
         )
+        
         info("Export", f"✅ Exportiert:\n{out_path}")
         self.statusbar.set(f"Saved ✅  {out_path}")
 
@@ -276,7 +282,7 @@ class LumiCapStudio(ctk.CTk):
             self.project_path,
             source_path=self.srt_path,
             settings=self._current_settings(),
-            meta={"draft": False},
+            meta=(dict(self.project_meta or {}) | {"draft": True}),
         )
 
         self.is_dirty = False
@@ -304,12 +310,20 @@ class LumiCapStudio(ctk.CTk):
         if not path:
             return
 
-        self.groups, meta, settings, self.srt_path = load_lcap_project(path)
+        try:
+            self.groups, meta, settings, self.srt_path = load_lcap_project(path)
+        except Exception as e:
+            info("Ungültige LCAP-Datei", f"Konnte Datei nicht öffnen:\n{e}")
+            return
+
+        # store project settings/meta so they persist on save
+        self.project_meta = meta or {}
+        self.project_settings = settings or {}
 
         # Apply stored settings back into UI options
-        self.normalize_punct_spacing = settings.get("normalize_punct_spacing", True)
-        self.disable_highlight_at_out = settings.get("disable_highlight_at_out", True)
-        self.default_style = settings.get("default_style", "Normal")
+        self.normalize_punct_spacing = self.project_settings.get("normalize_punct_spacing", True)
+        self.disable_highlight_at_out = self.project_settings.get("disable_highlight_at_out", True)
+        self.default_style = self.project_settings.get("default_style", "Normal")
 
         self.project_path = path
         self.selected_indices = []
@@ -317,15 +331,13 @@ class LumiCapStudio(ctk.CTk):
 
         self.refresh_group_list()
         self.detail.clear()
-
-        # Rebuild enabled because we have a source (optional)
         self.topbar.set_refresh_enabled(bool(self.srt_path))
 
-        if meta.get("draft"):
+        if self.project_meta.get("draft"):
             info("Draft geladen", "⚠️ Dieses Projekt ist als Entwurf markiert.")
 
         self.statusbar.set(f"Projekt geladen ✅ {path}")
-        
+            
 
     def on_apply_style_same_text(self):
         if not self.selected_indices:
