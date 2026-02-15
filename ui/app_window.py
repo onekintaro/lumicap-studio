@@ -6,6 +6,7 @@ from ui.dialogs import open_json_preview, info, MergeDialog
 
 from core.parser import parse_srt
 from core.grouping import build_groups
+from core.timing_normalize import normalize_timings
 from core.merge import merge_groups_smart
 from core.protect import toggle_protect
 from core.lcap import save_lcap, build_lcap_payload, load_lcap_project
@@ -122,6 +123,8 @@ class LumiCapStudio(ctk.CTk):
             default_style=self.default_style,
             disable_highlight_at_out=self.disable_highlight_at_out,
         )
+
+        normalize_timings(self.groups)
 
         self.selected_indices = []
         self.refresh_group_list()
