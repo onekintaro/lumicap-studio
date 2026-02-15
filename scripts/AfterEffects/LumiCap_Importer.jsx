@@ -366,7 +366,7 @@
                 // Hide masters but keep them usable
                 try { ml.guideLayer = true; } catch (e) { }
                 try { ml.shy = true; } catch (e) { }
-                try { comp.hideShyLayers = true; } catch (e) { }
+                // try { comp.hideShyLayers = true; } catch (e) { }
 
                 try { ml.moveToBeginning(); } catch (e) { }
             }
