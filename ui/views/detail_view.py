@@ -1,11 +1,7 @@
 import customtkinter as ctk
 import tkinter as tk
 
-# UI concern: styles shown in dropdowns
-STYLES = ["Normal", "Chorus", "Emphasis", "Bridge", "Verse", "Spoken", "!"] + [
-    chr(c) for c in range(ord("A"), ord("Z") + 1)
-]
-
+from config.styles import STYLES
 class DetailView(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent, corner_radius=12)
