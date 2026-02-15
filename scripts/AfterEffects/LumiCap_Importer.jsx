@@ -1,7 +1,6 @@
-// LumiCap_Importer_Update_AllInOne.jsx — After Effects 2026
+// LumiCap_Importer_Update_AllInOne_UI.jsx — After Effects 2026
 // .lcap (JSON) -> AE text layers with highlight steps
-// Modes: Create New / Update Existing
-// Optional: create missing Master <Style> layers (as Guide + Shy)
+// Sexy UI: Mode (Create/Update), Masters, Scope, Progress + Cancel
 //
 // Supports optional project layout in:
 // settings.layout = {
@@ -49,7 +48,6 @@
     }
 
     function centerTextAnchor(layer, t) {
-        // t: time to evaluate sourceRectAtTime (use layer.inPoint usually)
         try {
             var rect = layer.sourceRectAtTime(t, false);
             var ap = layer.property("Transform").property("Anchor Point");
@@ -63,6 +61,12 @@
             td.justification = ParagraphJustification.CENTER_JUSTIFY;
             layer.property("Source Text").setValue(td);
         } catch (e) { }
+    }
+
+    function getActiveComp() {
+        var item = app.project && app.project.activeItem;
+        if (item && (item instanceof CompItem)) return item;
+        return null;
     }
 
     // -------------------- layout --------------------
@@ -89,7 +93,6 @@
     }
 
     function anchorToNorm(anchor) {
-        // normalized 0..1
         switch (anchor) {
             case "bottom_center": return { x: 0.5, y: 0.85 };
             case "top_center": return { x: 0.5, y: 0.15 };
@@ -105,23 +108,20 @@
         var x = comp.width * a.x + layout.offX;
         var y = comp.height * a.y + layout.offY;
 
-        // apply safe bottom for bottom-ish anchors
         if (layout.anchor && layout.anchor.indexOf("bottom") === 0) {
             y = y - (comp.height * layout.safeBottom);
         }
-
         return [x, y];
     }
 
     // -------------------- comp pick/create --------------------
     function pickActiveCompOrCreateWithLayout(defaultName, fps, duration, layout) {
-        var item = app.project && app.project.activeItem;
-        if (item && (item instanceof CompItem)) return item;
+        var active = getActiveComp();
+        if (active) return active;
 
         var w = (layout && layout.compW) ? layout.compW : 1920;
         var h = (layout && layout.compH) ? layout.compH : 1080;
 
-        if (!app.project) throw new Error("No AE project open.");
         return app.project.items.addComp(
             defaultName || "LumiCap_Import",
             w, h,
@@ -146,10 +146,7 @@
         var e = Math.max(0, Math.min(endChar, len));
         if (e < s) e = s;
 
-        return {
-            startP: (s / len) * 100,
-            endP: (e / len) * 100
-        };
+        return { startP: (s / len) * 100, endP: (e / len) * 100 };
     }
 
     // -------------------- LCAP layer identity (Marker) --------------------
@@ -157,7 +154,6 @@
         if (!gid) return;
         try {
             var markerProp = layer.property("Marker");
-            // Remove existing LCAP id markers (optional cleanup)
             for (var k = markerProp.numKeys; k >= 1; k--) {
                 var c = markerProp.keyValue(k).comment || "";
                 if (c.indexOf("LCAP id:") === 0) markerProp.removeKey(k);
@@ -189,7 +185,6 @@
         return null;
     }
 
-    // Fallback gid if group.id missing (AE-only; you still should add real IDs in Python)
     function makeFallbackGid(group, index) {
         var style = group.style || "Normal";
         var key = group.key || "";
@@ -205,14 +200,12 @@
         animator.name = "Highlight";
 
         var animProps = animator.property("ADBE Text Animator Properties");
-        // placeholder visible property (masters/apply will override visuals)
         var fillColor = animProps.addProperty("ADBE Text Fill Color");
         fillColor.setValue([1, 1, 1]);
 
         var selectors = animator.property("ADBE Text Selectors");
         var rangeSel = selectors.addProperty("ADBE Text Selector");
         rangeSel.name = "Range";
-
         return rangeSel;
     }
 
@@ -235,15 +228,12 @@
 
         var startProp = rangeSelector.property("ADBE Text Percent Start");
         var endProp = rangeSelector.property("ADBE Text Percent End");
-
         if (!startProp || !endProp) return;
 
-        // Clear keys
         while (startProp.numKeys > 0) startProp.removeKey(1);
         while (endProp.numKeys > 0) endProp.removeKey(1);
 
         if (!steps || steps.length === 0) {
-            // No steps -> deactivate highlight
             startProp.setValue(0);
             endProp.setValue(0);
             return;
@@ -257,10 +247,8 @@
             startProp.setValueAtTime(t, pr.startP);
             endProp.setValueAtTime(t, pr.endP);
 
-            var k1 = startProp.nearestKeyIndex(t);
-            var k2 = endProp.nearestKeyIndex(t);
-            setHoldInterpolation(startProp, k1);
-            setHoldInterpolation(endProp, k2);
+            setHoldInterpolation(startProp, startProp.nearestKeyIndex(t));
+            setHoldInterpolation(endProp, endProp.nearestKeyIndex(t));
         }
     }
 
@@ -271,7 +259,7 @@
         return "[" + style + "] " + (label || ("Group " + (index + 1)));
     }
 
-    function createCaptionLayer(comp, group, index, layout) {
+    function createCaptionLayer(comp, group, index, layout, opts) {
         var layer = comp.layers.addText(group.text || "");
         layer.name = nameForGroup(group, index);
 
@@ -281,21 +269,15 @@
         layer.inPoint = inT;
         layer.outPoint = outT;
 
-        // Optional: center justify for clean positioning (recommended)
-        setTextJustifyCenter(layer);
+        if (opts.centerJustify) setTextJustifyCenter(layer);
+        if (opts.centerAnchor) centerTextAnchor(layer, layer.inPoint);
 
-        // IMPORTANT: center anchor before positioning
-        centerTextAnchor(layer, layer.inPoint);
-
-        // Now position using layout
-        var pos = computeCaptionPos(comp, layout);
-        layer.property("Transform").property("Position").setValue(pos);
-
-        // Default placement from layout (only on create)
-        try {
-            var pos = computeCaptionPos(comp, layout);
-            layer.property("Transform").property("Position").setValue(pos);
-        } catch (e) { }
+        if (opts.positionOnCreate) {
+            try {
+                var pos = computeCaptionPos(comp, layout);
+                layer.property("Transform").property("Position").setValue(pos);
+            } catch (e) { }
+        }
 
         var rangeSel = ensureHighlightRangeSelector(layer);
         applyStepsToRangeSelector(rangeSel, group.text || "", group.steps || []);
@@ -306,8 +288,8 @@
         return layer;
     }
 
-    function updateCaptionLayer(layer, group, index) {
-        // Keep styling & transforms; update content/timing/steps + name
+    function updateCaptionLayer(layer, group, index, opts) {
+        // Keep styling & transforms by default
         layer.property("Source Text").setValue(group.text || "");
 
         var inT = (group["in"] != null) ? group["in"] : layer.inPoint;
@@ -316,6 +298,9 @@
         layer.outPoint = outT;
 
         layer.name = nameForGroup(group, index);
+
+        if (opts.centerJustify) setTextJustifyCenter(layer);
+        if (opts.centerAnchor) centerTextAnchor(layer, layer.inPoint);
 
         var rangeSel = ensureHighlightRangeSelector(layer);
         applyStepsToRangeSelector(rangeSel, group.text || "", group.steps || []);
@@ -343,31 +328,27 @@
         return false;
     }
 
-    function ensureMasters(comp, stylesSet) {
+    function ensureMasters(comp, stylesSet, opts) {
         for (var s in stylesSet) {
             if (!stylesSet.hasOwnProperty(s)) continue;
             var masterName = "Master " + s;
 
             if (!hasTextLayerNamed(comp, masterName)) {
                 var ml = comp.layers.addText(masterName);
-
-                setTextJustifyCenter(ml);
-                centerTextAnchor(ml, ml.inPoint);
-
-                try {
-                    ml.property("Transform").property("Position").setValue([comp.width / 2, comp.height / 2]);
-                } catch (e) { }
-
                 ml.name = masterName;
 
-                // Give master a highlight animator scaffold (apply script can copy this)
+                if (opts.centerJustify) setTextJustifyCenter(ml);
+                if (opts.centerAnchor) centerTextAnchor(ml, ml.inPoint);
+
+                try { ml.property("Transform").property("Position").setValue([comp.width / 2, comp.height / 2]); } catch (e) { }
+
                 ensureHighlightRangeSelector(ml);
 
-                // Hide masters but keep them usable
                 try { ml.guideLayer = true; } catch (e) { }
                 try { ml.shy = true; } catch (e) { }
-                // try { comp.hideShyLayers = true; } catch (e) { }
-
+                if (opts.hideShyLayers) {
+                    try { comp.hideShyLayers = true; } catch (e) { }
+                }
                 try { ml.moveToBeginning(); } catch (e) { }
             }
         }
@@ -380,85 +361,254 @@
         if (!lcap.version) throw new Error("Missing version.");
     }
 
-    // -------------------- main --------------------
-    try {
-        if (!app.project) throw new Error("Open an AE project first.");
+    // -------------------- UI --------------------
+    function showUI(defaults) {
+        var w = new Window("dialog", "LumiCap Import / Update 😈💜");
+        w.orientation = "column";
+        w.alignChildren = ["fill", "top"];
 
-        var file = File.openDialog("Wähle eine .lcap Datei", "*.lcap;*.json");
-        if (!file) return;
+        var p1 = w.add("panel", undefined, "File");
+        p1.orientation = "column";
+        p1.alignChildren = ["fill", "top"];
+        var fileRow = p1.add("group"); fileRow.orientation = "row";
+        var filePath = fileRow.add("edittext", undefined, defaults.filePath || "");
+        filePath.characters = 48;
+        var btnBrowse = fileRow.add("button", undefined, "Browse…");
 
-        var content = readTextFile(file);
-        var lcap = parseJSONSafe(content);
+        var p2 = w.add("panel", undefined, "Mode");
+        p2.orientation = "column";
+        p2.alignChildren = ["left", "top"];
+        var rbCreate = p2.add("radiobutton", undefined, "Create New Layers");
+        var rbUpdate = p2.add("radiobutton", undefined, "Update Existing (by LCAP id marker)");
+        rbUpdate.value = true;
 
-        validateLcap(lcap);
+        var p3 = w.add("panel", undefined, "Masters");
+        p3.orientation = "column";
+        p3.alignChildren = ["left", "top"];
+        var cbMasters = p3.add("checkbox", undefined, "Create missing Master <Style> layers (Guide + Shy)");
+        cbMasters.value = true;
+        var cbHideShy = p3.add("checkbox", undefined, "Hide shy layers in comp (comp.hideShyLayers = true)");
+        cbHideShy.value = false;
 
-        if (lcap.meta && lcap.meta.draft === true) {
-            var ok = confirm("⚠️ DRAFT Datei\nDiese .lcap könnte unfertig sein.\n\nOK = trotzdem importieren\nCancel = abbrechen");
-            if (!ok) return;
+        var p4 = w.add("panel", undefined, "Placement / Safety");
+        p4.orientation = "column";
+        p4.alignChildren = ["left", "top"];
+        var cbPositionOnCreate = p4.add("checkbox", undefined, "Position captions on CREATE using layout (recommended)");
+        cbPositionOnCreate.value = true;
+        var cbCenterAnchor = p4.add("checkbox", undefined, "Center anchor point on import");
+        cbCenterAnchor.value = true;
+        var cbCenterJustify = p4.add("checkbox", undefined, "Center text justification on import");
+        cbCenterJustify.value = true;
+
+        var hint = w.add("statictext", undefined, "Tip: Update mode keeps your styling/transform; only text, timing & highlight steps are updated.");
+        hint.graphics.font = ScriptUI.newFont(hint.graphics.font.name, "ITALIC", hint.graphics.font.size);
+
+        var btnRow = w.add("group");
+        btnRow.orientation = "row";
+        btnRow.alignment = "right";
+        var btnCancel = btnRow.add("button", undefined, "Cancel");
+        var btnOk = btnRow.add("button", undefined, "Go 😈", { name: "ok" });
+
+        var res = { ok: false };
+
+        btnBrowse.onClick = function () {
+            var f = File.openDialog("Wähle eine .lcap Datei", "*.lcap;*.json");
+            if (f) filePath.text = f.fsName;
+        };
+
+        btnOk.onClick = function () {
+            res.ok = true;
+            res.filePath = filePath.text;
+            res.doUpdate = rbUpdate.value;
+            res.makeMasters = cbMasters.value;
+            res.hideShyLayers = cbHideShy.value;
+            res.positionOnCreate = cbPositionOnCreate.value;
+            res.centerAnchor = cbCenterAnchor.value;
+            res.centerJustify = cbCenterJustify.value;
+            w.close();
+        };
+        btnCancel.onClick = function () { res.ok = false; w.close(); };
+
+        w.center();
+        w.show();
+        return res;
+    }
+
+    function showProgress(total) {
+        var w = new Window("palette", "LumiCap Importing… 🦥");
+        w.orientation = "column";
+        w.alignChildren = ["fill", "top"];
+
+        var txt = w.add("statictext", undefined, "Starting…");
+        var bar = w.add("progressbar", undefined, 0, Math.max(1, total));
+        bar.preferredSize = [420, 18];
+
+        var row = w.add("group");
+        row.orientation = "row";
+        row.alignment = "right";
+
+        var btnStop = row.add("button", undefined, "Stop");
+        var btnClose = row.add("button", undefined, "Close");
+
+        var state = { stop: false };
+
+        function forceClose() {
+            try { w.hide(); } catch (e) { }
+            try { w.visible = false; } catch (e) { }
+            try { w.close(); } catch (e) { }
         }
 
-        var groups = lcap.groups || [];
-        var fps = (lcap.meta && lcap.meta.fps) ? lcap.meta.fps : 25;
-        var duration = computeDuration(groups);
+        btnStop.onClick = function () { state.stop = true; forceClose(); };
+        btnClose.onClick = function () { state.stop = true; forceClose(); };
 
-        // Layout
-        var layout = getLayout(lcap);
+        w.onClose = function () { state.stop = true; return true; };
 
-        // Mode prompts
-        var doUpdate = confirm("Update Mode?\nOK = Update existing layers\nCancel = Create new layers");
-        var makeMasters = confirm("Missing Master layers erstellen?\nOK = Ja\nCancel = Nein");
+        w.show();
 
-        app.beginUndoGroup("LumiCap Import/Update");
+        return {
+            state: state,
+            update: function (i, label) {
+                try {
+                    txt.text = label || ("Group " + i + "/" + total);
+                    bar.value = i;
+                    w.update();
+                } catch (e) { }
+            },
+            forceClose: forceClose
+        };
+    }
 
-        var compName = (lcap.project && lcap.project.name) ? lcap.project.name : "LumiCap_Import";
-        var comp = pickActiveCompOrCreateWithLayout(compName, fps, duration, layout);
+    // -------------------- MAIN (safe progress cleanup) --------------------
+    (function () {
+        var prog = null;
+        var undoStarted = false;
 
-        // Set comp fps/duration gently
-        try { comp.frameRate = fps; } catch (e) { }
-        try { if (comp.duration < duration) comp.duration = duration; } catch (e) { }
+        try {
+            if (!app.project) throw new Error("Open an AE project first.");
 
-        // Optional masters
-        if (makeMasters) {
-            var defaultStyle = (lcap.settings && lcap.settings.default_style) ? lcap.settings.default_style : "Normal";
-            var stylesSet = collectStyles(groups, defaultStyle);
-            ensureMasters(comp, stylesSet);
-        }
+            var ui = showUI({ filePath: "" });
+            if (!ui.ok) return;
 
-        // Import/update groups
-        var created = 0;
-        var updated = 0;
+            var file = File(ui.filePath);
+            if (!file || !file.exists) throw new Error("File not found: " + ui.filePath);
 
-        for (var i = 0; i < groups.length; i++) {
-            var g = groups[i];
-            if (!g) continue;
+            var content = readTextFile(file);
+            var lcap = parseJSONSafe(content);
 
-            var gid = g.id || makeFallbackGid(g, i);
+            validateLcap(lcap);
 
-            if (doUpdate) {
-                var existing = findLayerByGid(comp, gid);
-                if (existing) {
-                    updateCaptionLayer(existing, g, i);
-                    updated++;
+            if (lcap.meta && lcap.meta.draft === true) {
+                var ok = confirm("⚠️ DRAFT Datei\nDiese .lcap könnte unfertig sein.\n\nOK = trotzdem importieren\nCancel = abbrechen");
+                if (!ok) return;
+            }
+
+            var groups = lcap.groups || [];
+            var fps = (lcap.meta && lcap.meta.fps) ? lcap.meta.fps : 25;
+            var duration = computeDuration(groups);
+            var layout = getLayout(lcap);
+
+            var compName = (lcap.project && lcap.project.name) ? lcap.project.name : "LumiCap_Import";
+            var comp = pickActiveCompOrCreateWithLayout(compName, fps, duration, layout);
+
+            // Set comp fps/duration gently
+            try { comp.frameRate = fps; } catch (e) { }
+            try { if (comp.duration < duration) comp.duration = duration; } catch (e) { }
+
+            // Masters (optional)
+            if (ui.makeMasters) {
+                var defaultStyle = (lcap.settings && lcap.settings.default_style) ? lcap.settings.default_style : "Normal";
+                var stylesSet = collectStyles(groups, defaultStyle);
+                ensureMasters(comp, stylesSet, {
+                    centerJustify: ui.centerJustify,
+                    centerAnchor: ui.centerAnchor,
+                    hideShyLayers: ui.hideShyLayers
+                });
+            }
+
+            app.beginUndoGroup("LumiCap Import/Update (UI)");
+            undoStarted = true;
+
+            // Progress (safe)
+            prog = showProgress(groups.length);
+
+            var created = 0;
+            var updated = 0;
+            var skipped = 0;
+
+            for (var i = 0; i < groups.length; i++) {
+                if (prog && prog.state && prog.state.stop) break;
+
+                var g = groups[i];
+                if (!g) { skipped++; continue; }
+
+                if (prog) {
+                    prog.update(
+                        i + 1,
+                        (ui.doUpdate ? "Update" : "Create") + " → " +
+                        (g.style || "Normal") + " / " + firstTwoWords(g.text || "")
+                    );
+                }
+
+                var gid = g.id || makeFallbackGid(g, i);
+
+                if (ui.doUpdate) {
+                    var existing = findLayerByGid(comp, gid);
+                    if (existing) {
+                        updateCaptionLayer(existing, g, i, {
+                            centerAnchor: ui.centerAnchor,
+                            centerJustify: ui.centerJustify
+                        });
+                        updated++;
+                    } else {
+                        createCaptionLayer(comp, g, i, layout, {
+                            positionOnCreate: ui.positionOnCreate,
+                            centerAnchor: ui.centerAnchor,
+                            centerJustify: ui.centerJustify
+                        });
+                        created++;
+                    }
                 } else {
-                    createCaptionLayer(comp, g, i, layout);
+                    createCaptionLayer(comp, g, i, layout, {
+                        positionOnCreate: ui.positionOnCreate,
+                        centerAnchor: ui.centerAnchor,
+                        centerJustify: ui.centerJustify
+                    });
                     created++;
                 }
-            } else {
-                createCaptionLayer(comp, g, i, layout);
-                created++;
+
+                // AE nicht komplett sterben lassen
+                if ((i % 10) === 0) {
+                    try { app.refresh(); } catch (e) { }
+                }
+            }
+
+            // Result
+            var stopped = (prog && prog.state && prog.state.stop);
+
+            alert(
+                (stopped ? "⛔ LumiCap abgebrochen!\n\n" : "✅ LumiCap " + (ui.doUpdate ? "Update" : "Import") + " fertig!\n\n") +
+                "Created: " + created + "\n" +
+                "Updated: " + updated + "\n" +
+                "Skipped: " + skipped + "\n\n" +
+                "Comp: " + comp.name + "\n" +
+                "Layout anchor: " + layout.anchor
+            );
+
+        } catch (err) {
+            alert("❌ LumiCap Import/Update Error:\n" + err.toString());
+        } finally {
+            // ALWAYS kill progress window (prevents stuck palette zombies)
+            if (prog) {
+                try {
+                    if (prog.forceClose) prog.forceClose();
+                    else if (prog.close) prog.close(); // fallback if you kept old API
+                } catch (e) { }
+            }
+
+            // ALWAYS end undo group if started
+            if (undoStarted) {
+                try { app.endUndoGroup(); } catch (e2) { }
             }
         }
-
-        app.endUndoGroup();
-
-        alert(
-            "✅ LumiCap " + (doUpdate ? "Update" : "Import") + " fertig!\n" +
-            "Created: " + created + "\nUpdated: " + updated + "\n" +
-            "Comp: " + comp.name + "\n" +
-            "Layout anchor: " + layout.anchor
-        );
-
-    } catch (err) {
-        alert("❌ LumiCap Import/Update Error:\n" + err.toString());
-    }
+    })();
 })();
