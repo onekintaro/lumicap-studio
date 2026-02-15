@@ -1,6 +1,10 @@
-// LumiCap_Importer_Update_AllInOne_UI.jsx — After Effects 2026
+// LumiCap_Importer.jsx — After Effects 2026
 // .lcap (JSON) -> AE text layers with highlight steps
-// Sexy UI: Mode (Create/Update), Masters, Scope, Progress + Cancel
+// Sexy UI: Mode (Create/Update), Masters, Placement, Import Structure, Progress + Cancel
+//
+// Import Structure:
+// - (Default) Style Precomps (performance mode): 1 precomp per style, local time (t - minIn)
+// - Single Comp (classic): all captions in one comp
 //
 // Supports optional project layout in:
 // settings.layout = {
@@ -36,6 +40,13 @@
         if (!t) return "";
         var parts = t.split(" ");
         return (parts.length === 1) ? parts[0] : (parts[0] + " " + parts[1]);
+    }
+
+    function sanitizeStyleName(s) {
+        s = (s || "Normal") + "";
+        s = s.replace(/[\\\/\:\*\?\<\>\|"]/g, "_");
+        s = s.replace(/^\s+|\s+$/g, "");
+        return s || "Normal";
     }
 
     function computeDuration(groups) {
@@ -131,6 +142,31 @@
         );
     }
 
+    function findCompByName(name) {
+        if (!app.project) return null;
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var it = app.project.item(i);
+            if (it && (it instanceof CompItem) && it.name === name) return it;
+        }
+        return null;
+    }
+
+    function ensurePrecompOnMain(mainComp, precomp) {
+        for (var i = 1; i <= mainComp.numLayers; i++) {
+            var l = mainComp.layer(i);
+            try {
+                if (l && l.source && (l.source instanceof CompItem) && l.source.id === precomp.id) return l;
+            } catch (e) { }
+        }
+        try {
+            var av = mainComp.layers.add(precomp);
+            av.name = precomp.name;
+            return av;
+        } catch (e2) {
+            return null;
+        }
+    }
+
     function setHoldInterpolation(prop, keyIndex) {
         try {
             prop.setInterpolationTypeAtKey(keyIndex, KeyframeInterpolationType.HOLD, KeyframeInterpolationType.HOLD);
@@ -175,7 +211,7 @@
         return null;
     }
 
-    function findLayerByGid(comp, gid) {
+    function findLayerByGidInComp(comp, gid) {
         for (var i = 1; i <= comp.numLayers; i++) {
             var l = comp.layer(i);
             if (l && (l instanceof TextLayer)) {
@@ -259,12 +295,17 @@
         return "[" + style + "] " + (label || ("Group " + (index + 1)));
     }
 
-    function createCaptionLayer(comp, group, index, layout, opts) {
+    function createCaptionLayer(comp, group, index, layout, opts, timeOffset) {
+        var off = (timeOffset != null) ? timeOffset : 0;
+
         var layer = comp.layers.addText(group.text || "");
         layer.name = nameForGroup(group, index);
 
-        var inT = (group["in"] != null) ? group["in"] : 0;
-        var outT = (group.out != null) ? group.out : (inT + 1);
+        var inT = (group["in"] != null) ? (group["in"] - off) : 0;
+        var outT = (group.out != null) ? (group.out - off) : (inT + 1);
+
+        if (inT < 0) inT = 0;
+        if (outT < 0) outT = inT + 0.5;
 
         layer.inPoint = inT;
         layer.outPoint = outT;
@@ -280,7 +321,20 @@
         }
 
         var rangeSel = ensureHighlightRangeSelector(layer);
-        applyStepsToRangeSelector(rangeSel, group.text || "", group.steps || []);
+
+        var steps = group.steps || [];
+        var shifted = [];
+        for (var si = 0; si < steps.length; si++) {
+            var st = steps[si];
+            shifted.push({
+                t: (st.t != null) ? (st.t - off) : 0,
+                start: st.start,
+                end: st.end,
+                label: st.label
+            });
+        }
+
+        applyStepsToRangeSelector(rangeSel, group.text || "", shifted);
 
         var gid = group.id || makeFallbackGid(group, index);
         setLayerGidMarker(layer, gid);
@@ -288,12 +342,17 @@
         return layer;
     }
 
-    function updateCaptionLayer(layer, group, index, opts) {
-        // Keep styling & transforms by default
+    function updateCaptionLayer(layer, group, index, opts, timeOffset) {
+        var off = (timeOffset != null) ? timeOffset : 0;
+
         layer.property("Source Text").setValue(group.text || "");
 
-        var inT = (group["in"] != null) ? group["in"] : layer.inPoint;
-        var outT = (group.out != null) ? group.out : layer.outPoint;
+        var inT = (group["in"] != null) ? (group["in"] - off) : layer.inPoint;
+        var outT = (group.out != null) ? (group.out - off) : layer.outPoint;
+
+        if (inT < 0) inT = 0;
+        if (outT < 0) outT = inT + 0.5;
+
         layer.inPoint = inT;
         layer.outPoint = outT;
 
@@ -303,7 +362,20 @@
         if (opts.centerAnchor) centerTextAnchor(layer, layer.inPoint);
 
         var rangeSel = ensureHighlightRangeSelector(layer);
-        applyStepsToRangeSelector(rangeSel, group.text || "", group.steps || []);
+
+        var steps = group.steps || [];
+        var shifted = [];
+        for (var si = 0; si < steps.length; si++) {
+            var st = steps[si];
+            shifted.push({
+                t: (st.t != null) ? (st.t - off) : 0,
+                start: st.start,
+                end: st.end,
+                label: st.label
+            });
+        }
+
+        applyStepsToRangeSelector(rangeSel, group.text || "", shifted);
 
         var gid = group.id || makeFallbackGid(group, index);
         setLayerGidMarker(layer, gid);
@@ -322,36 +394,34 @@
 
     function hasTextLayerNamed(comp, name) {
         for (var i = 1; i <= comp.numLayers; i++) {
-            var l = comp.layer(i);
+            var l = null;
+            try { l = comp.layer(i); } catch (e) { continue; }
             if (l && (l instanceof TextLayer) && l.name === name) return true;
         }
         return false;
     }
 
-    function ensureMasters(comp, stylesSet, opts) {
-        for (var s in stylesSet) {
-            if (!stylesSet.hasOwnProperty(s)) continue;
-            var masterName = "Master " + s;
+    function ensureMasterInComp(comp, styleName, opts) {
+        var masterName = "Master " + styleName;
+        if (hasTextLayerNamed(comp, masterName)) return;
 
-            if (!hasTextLayerNamed(comp, masterName)) {
-                var ml = comp.layers.addText(masterName);
-                ml.name = masterName;
+        var ml = comp.layers.addText(masterName);
+        ml.name = masterName;
 
-                if (opts.centerJustify) setTextJustifyCenter(ml);
-                if (opts.centerAnchor) centerTextAnchor(ml, ml.inPoint);
+        if (opts.centerJustify) setTextJustifyCenter(ml);
+        if (opts.centerAnchor) centerTextAnchor(ml, ml.inPoint);
 
-                try { ml.property("Transform").property("Position").setValue([comp.width / 2, comp.height / 2]); } catch (e) { }
+        try { ml.property("Transform").property("Position").setValue([comp.width / 2, comp.height / 2]); } catch (e) { }
 
-                ensureHighlightRangeSelector(ml);
+        ensureHighlightRangeSelector(ml);
 
-                try { ml.guideLayer = true; } catch (e) { }
-                try { ml.shy = true; } catch (e) { }
-                if (opts.hideShyLayers) {
-                    try { comp.hideShyLayers = true; } catch (e) { }
-                }
-                try { ml.moveToBeginning(); } catch (e) { }
-            }
+        try { ml.guideLayer = true; } catch (e) { }
+        try { ml.shy = true; } catch (e) { }
+        if (opts.hideShyLayers) {
+            try { comp.hideShyLayers = true; } catch (e2) { }
         }
+
+        try { ml.moveToBeginning(); } catch (e3) { }
     }
 
     // -------------------- validate lcap --------------------
@@ -359,6 +429,61 @@
         if (!lcap) throw new Error("Empty file.");
         if (lcap.format !== "lcap") throw new Error("Invalid format (expected 'lcap').");
         if (!lcap.version) throw new Error("Missing version.");
+    }
+
+    // -------------------- style grouping --------------------
+    function splitGroupsByStyle(groups, defaultStyle) {
+        var map = {};
+        for (var i = 0; i < groups.length; i++) {
+            var g = groups[i];
+            if (!g) continue;
+            var s = sanitizeStyleName(g.style || defaultStyle || "Normal");
+            if (!map[s]) map[s] = [];
+            map[s].push({ g: g, idx: i });
+        }
+        return map;
+    }
+
+    function calcStyleRange(items) {
+        var minIn = null;
+        var maxOut = null;
+        for (var i = 0; i < items.length; i++) {
+            var g = items[i].g;
+            var iT = (g["in"] != null) ? g["in"] : 0;
+            var oT = (g.out != null) ? g.out : (iT + 1);
+            if (minIn === null || iT < minIn) minIn = iT;
+            if (maxOut === null || oT > maxOut) maxOut = oT;
+        }
+        if (minIn === null) minIn = 0;
+        if (maxOut === null) maxOut = minIn + 1;
+        return { minIn: minIn, maxOut: maxOut };
+    }
+
+    function ensureStylePrecomp(mainComp, styleName, fps, layout, durationLocal) {
+        var compName = "LCAP_" + sanitizeStyleName(styleName);
+        var pc = findCompByName(compName);
+        if (pc) return pc;
+
+        var w = mainComp.width;
+        var h = mainComp.height;
+
+        if (!w || !h) {
+            w = (layout && layout.compW) ? layout.compW : 1920;
+            h = (layout && layout.compH) ? layout.compH : 1080;
+        }
+
+        pc = app.project.items.addComp(compName, w, h, 1.0, Math.max(1, durationLocal), fps || 25);
+        return pc;
+    }
+
+    function listStylePrecomps() {
+        var out = [];
+        if (!app.project) return out;
+        for (var i = 1; i <= app.project.numItems; i++) {
+            var it = app.project.item(i);
+            if (it && (it instanceof CompItem) && (it.name || "").indexOf("LCAP_") === 0) out.push(it);
+        }
+        return out;
     }
 
     // -------------------- UI --------------------
@@ -382,13 +507,20 @@
         var rbUpdate = p2.add("radiobutton", undefined, "Update Existing (by LCAP id marker)");
         rbUpdate.value = true;
 
+        var p5 = w.add("panel", undefined, "Import Structure");
+        p5.orientation = "column";
+        p5.alignChildren = ["left", "top"];
+        var rbStylePrecomps = p5.add("radiobutton", undefined, "Style Precomps (Performance Mode) ✅");
+        var rbSingleComp = p5.add("radiobutton", undefined, "Single Comp (Classic / Flat) ⚠️");
+        rbStylePrecomps.value = true;
+
         var p3 = w.add("panel", undefined, "Masters");
         p3.orientation = "column";
         p3.alignChildren = ["left", "top"];
         var cbMasters = p3.add("checkbox", undefined, "Create missing Master <Style> layers (Guide + Shy)");
         cbMasters.value = true;
         var cbHideShy = p3.add("checkbox", undefined, "Hide shy layers in comp (comp.hideShyLayers = true)");
-        cbHideShy.value = false;
+        cbHideShy.value = true;
 
         var p4 = w.add("panel", undefined, "Placement / Safety");
         p4.orientation = "column";
@@ -400,7 +532,9 @@
         var cbCenterJustify = p4.add("checkbox", undefined, "Center text justification on import");
         cbCenterJustify.value = true;
 
-        var hint = w.add("statictext", undefined, "Tip: Update mode keeps your styling/transform; only text, timing & highlight steps are updated.");
+        var hint = w.add("statictext", undefined,
+            "Tip: Update mode keeps styling/transform. Only text, timing & highlight steps are updated.\n" +
+            "Performance Mode: 1 precomp per style → AE bleibt (mehr oder weniger) am Leben. 🦥");
         hint.graphics.font = ScriptUI.newFont(hint.graphics.font.name, "ITALIC", hint.graphics.font.size);
 
         var btnRow = w.add("group");
@@ -420,6 +554,7 @@
             res.ok = true;
             res.filePath = filePath.text;
             res.doUpdate = rbUpdate.value;
+            res.structure = rbStylePrecomps.value ? "STYLE_PRECOMPS" : "SINGLE_COMP";
             res.makeMasters = cbMasters.value;
             res.hideShyLayers = cbHideShy.value;
             res.positionOnCreate = cbPositionOnCreate.value;
@@ -434,8 +569,8 @@
         return res;
     }
 
-    function showProgress(total) {
-        var w = new Window("palette", "LumiCap Importing… 🦥");
+    function showProgress(total, title) {
+        var w = new Window("palette", title || "LumiCap Working… 🦥");
         w.orientation = "column";
         w.alignChildren = ["fill", "top"];
 
@@ -454,13 +589,12 @@
 
         function forceClose() {
             try { w.hide(); } catch (e) { }
-            try { w.visible = false; } catch (e) { }
-            try { w.close(); } catch (e) { }
+            try { w.visible = false; } catch (e2) { }
+            try { w.close(); } catch (e3) { }
         }
 
         btnStop.onClick = function () { state.stop = true; forceClose(); };
         btnClose.onClick = function () { state.stop = true; forceClose(); };
-
         w.onClose = function () { state.stop = true; return true; };
 
         w.show();
@@ -469,7 +603,7 @@
             state: state,
             update: function (i, label) {
                 try {
-                    txt.text = label || ("Group " + i + "/" + total);
+                    txt.text = label || ("Item " + i + "/" + total);
                     bar.value = i;
                     w.update();
                 } catch (e) { }
@@ -478,7 +612,7 @@
         };
     }
 
-    // -------------------- MAIN (safe progress cleanup) --------------------
+    // -------------------- MAIN --------------------
     (function () {
         var prog = null;
         var undoStarted = false;
@@ -508,107 +642,177 @@
             var layout = getLayout(lcap);
 
             var compName = (lcap.project && lcap.project.name) ? lcap.project.name : "LumiCap_Import";
-            var comp = pickActiveCompOrCreateWithLayout(compName, fps, duration, layout);
+            var mainComp = pickActiveCompOrCreateWithLayout(compName, fps, duration, layout);
 
-            // Set comp fps/duration gently
-            try { comp.frameRate = fps; } catch (e) { }
-            try { if (comp.duration < duration) comp.duration = duration; } catch (e) { }
+            try { mainComp.frameRate = fps; } catch (e) { }
+            try { if (mainComp.duration < duration) mainComp.duration = duration; } catch (e2) { }
 
-            // Masters (optional)
-            if (ui.makeMasters) {
-                var defaultStyle = (lcap.settings && lcap.settings.default_style) ? lcap.settings.default_style : "Normal";
-                var stylesSet = collectStyles(groups, defaultStyle);
-                ensureMasters(comp, stylesSet, {
-                    centerJustify: ui.centerJustify,
-                    centerAnchor: ui.centerAnchor,
-                    hideShyLayers: ui.hideShyLayers
-                });
-            }
+            var defaultStyle = (lcap.settings && lcap.settings.default_style) ? lcap.settings.default_style : "Normal";
 
             app.beginUndoGroup("LumiCap Import/Update (UI)");
             undoStarted = true;
 
-            // Progress (safe)
-            prog = showProgress(groups.length);
+            prog = showProgress(Math.max(1, groups.length), (ui.structure === "STYLE_PRECOMPS") ? "LumiCap Importing (Style Precomps)… 🦥" : "LumiCap Importing… 🦥");
 
             var created = 0;
             var updated = 0;
             var skipped = 0;
+            var moved = 0;
 
-            for (var i = 0; i < groups.length; i++) {
-                if (prog && prog.state && prog.state.stop) break;
-
-                var g = groups[i];
-                if (!g) { skipped++; continue; }
-
-                if (prog) {
-                    prog.update(
-                        i + 1,
-                        (ui.doUpdate ? "Update" : "Create") + " → " +
-                        (g.style || "Normal") + " / " + firstTwoWords(g.text || "")
-                    );
+            if (ui.structure === "SINGLE_COMP") {
+                if (ui.makeMasters) {
+                    var stylesSet = collectStyles(groups, defaultStyle);
+                    for (var s in stylesSet) {
+                        if (!stylesSet.hasOwnProperty(s)) continue;
+                        ensureMasterInComp(mainComp, sanitizeStyleName(s), {
+                            centerJustify: ui.centerJustify,
+                            centerAnchor: ui.centerAnchor,
+                            hideShyLayers: ui.hideShyLayers
+                        });
+                    }
                 }
 
-                var gid = g.id || makeFallbackGid(g, i);
+                for (var i = 0; i < groups.length; i++) {
+                    if (prog && prog.state && prog.state.stop) break;
 
-                if (ui.doUpdate) {
-                    var existing = findLayerByGid(comp, gid);
-                    if (existing) {
-                        updateCaptionLayer(existing, g, i, {
-                            centerAnchor: ui.centerAnchor,
-                            centerJustify: ui.centerJustify
-                        });
-                        updated++;
+                    var g = groups[i];
+                    if (!g) { skipped++; continue; }
+
+                    if (prog) prog.update(i + 1, (ui.doUpdate ? "Update" : "Create") + " → " + (g.style || defaultStyle || "Normal") + " / " + firstTwoWords(g.text || ""));
+
+                    var gid = g.id || makeFallbackGid(g, i);
+
+                    if (ui.doUpdate) {
+                        var existing = findLayerByGidInComp(mainComp, gid);
+                        if (existing) {
+                            updateCaptionLayer(existing, g, i, { centerAnchor: ui.centerAnchor, centerJustify: ui.centerJustify }, 0);
+                            updated++;
+                        } else {
+                            createCaptionLayer(mainComp, g, i, layout, { positionOnCreate: ui.positionOnCreate, centerAnchor: ui.centerAnchor, centerJustify: ui.centerJustify }, 0);
+                            created++;
+                        }
                     } else {
-                        createCaptionLayer(comp, g, i, layout, {
-                            positionOnCreate: ui.positionOnCreate,
-                            centerAnchor: ui.centerAnchor,
-                            centerJustify: ui.centerJustify
-                        });
+                        createCaptionLayer(mainComp, g, i, layout, { positionOnCreate: ui.positionOnCreate, centerAnchor: ui.centerAnchor, centerJustify: ui.centerJustify }, 0);
                         created++;
                     }
-                } else {
-                    createCaptionLayer(comp, g, i, layout, {
-                        positionOnCreate: ui.positionOnCreate,
-                        centerAnchor: ui.centerAnchor,
-                        centerJustify: ui.centerJustify
-                    });
-                    created++;
+
+                    if ((i % 10) === 0) { try { app.refresh(); } catch (eR) { } }
+                }
+            } else {
+                var byStyle = splitGroupsByStyle(groups, defaultStyle);
+                var stylePrecompsCache = listStylePrecomps();
+
+                for (var style in byStyle) {
+                    if (!byStyle.hasOwnProperty(style)) continue;
+
+                    var items = byStyle[style];
+                    var range = calcStyleRange(items);
+                    var localDur = Math.max(1, (range.maxOut - range.minIn) + 1);
+
+                    var pc = ensureStylePrecomp(mainComp, style, fps, layout, localDur);
+                    try { pc.frameRate = fps; } catch (eF) { }
+
+                    var av = ensurePrecompOnMain(mainComp, pc);
+                    if (av) {
+                        try { av.startTime = range.minIn; } catch (e1) { }
+                        try { av.inPoint = range.minIn; } catch (e2) { }
+                        try { av.outPoint = range.maxOut; } catch (e3) { }
+                    }
+
+                    if (ui.makeMasters) {
+                        ensureMasterInComp(pc, style, { centerJustify: ui.centerJustify, centerAnchor: ui.centerAnchor, hideShyLayers: ui.hideShyLayers });
+                    }
+
+                    var found = false;
+                    for (var c = 0; c < stylePrecompsCache.length; c++) {
+                        if (stylePrecompsCache[c].id === pc.id) { found = true; break; }
+                    }
+                    if (!found) stylePrecompsCache.push(pc);
                 }
 
-                // AE nicht komplett sterben lassen
-                if ((i % 10) === 0) {
-                    try { app.refresh(); } catch (e) { }
+                var processed = 0;
+                for (var style2 in byStyle) {
+                    if (!byStyle.hasOwnProperty(style2)) continue;
+
+                    var items2 = byStyle[style2];
+                    var range2 = calcStyleRange(items2);
+                    var off = range2.minIn;
+
+                    var pc2 = findCompByName("LCAP_" + sanitizeStyleName(style2));
+                    if (!pc2) continue;
+
+                    for (var ii = 0; ii < items2.length; ii++) {
+                        if (prog && prog.state && prog.state.stop) break;
+
+                        var pack = items2[ii];
+                        var g2 = pack.g;
+                        var idx2 = pack.idx;
+
+                        processed++;
+                        if (prog) prog.update(processed, (ui.doUpdate ? "Update" : "Create") + " → " + style2 + " / " + firstTwoWords(g2.text || ""));
+
+                        var gid2 = g2.id || makeFallbackGid(g2, idx2);
+
+                        if (ui.doUpdate) {
+                            var existing2 = findLayerByGidInComp(pc2, gid2);
+
+                            if (!existing2) {
+                                var foundLayer = null;
+                                var foundComp = null;
+
+                                for (var sc = 0; sc < stylePrecompsCache.length; sc++) {
+                                    var ccomp = stylePrecompsCache[sc];
+                                    if (!ccomp) continue;
+                                    var l = findLayerByGidInComp(ccomp, gid2);
+                                    if (l) { foundLayer = l; foundComp = ccomp; break; }
+                                }
+
+                                if (foundLayer && foundComp && foundComp.id !== pc2.id) {
+                                    try { foundLayer.remove(); } catch (eDel) { }
+                                    moved++;
+                                }
+
+                                createCaptionLayer(pc2, g2, idx2, layout, { positionOnCreate: ui.positionOnCreate, centerAnchor: ui.centerAnchor, centerJustify: ui.centerJustify }, off);
+                                created++;
+                            } else {
+                                updateCaptionLayer(existing2, g2, idx2, { centerAnchor: ui.centerAnchor, centerJustify: ui.centerJustify }, off);
+                                updated++;
+                            }
+                        } else {
+                            createCaptionLayer(pc2, g2, idx2, layout, { positionOnCreate: ui.positionOnCreate, centerAnchor: ui.centerAnchor, centerJustify: ui.centerJustify }, off);
+                            created++;
+                        }
+
+                        if ((processed % 5) === 0) {
+                            try {
+                                app.refresh();
+                                $.sleep(1);   // ganz wichtig → gibt AE Zeit für UI Events
+                            } catch (eQ) { }
+                        }
+                    }
+
+                    if (prog && prog.state && prog.state.stop) break;
                 }
             }
 
-            // Result
-            var stopped = (prog && prog.state && prog.state.stop);
+            if (prog) { try { prog.forceClose(); } catch (eFC) { } prog = null; }
 
             alert(
-                (stopped ? "⛔ LumiCap abgebrochen!\n\n" : "✅ LumiCap " + (ui.doUpdate ? "Update" : "Import") + " fertig!\n\n") +
+                "✅ LumiCap " + (ui.doUpdate ? "Update" : "Import") + " fertig!\n\n" +
+                "Structure: " + ui.structure + "\n" +
                 "Created: " + created + "\n" +
                 "Updated: " + updated + "\n" +
+                "Moved (style change): " + moved + "\n" +
                 "Skipped: " + skipped + "\n\n" +
-                "Comp: " + comp.name + "\n" +
+                "Main Comp: " + mainComp.name + "\n" +
                 "Layout anchor: " + layout.anchor
             );
 
         } catch (err) {
-            alert("❌ LumiCap Import/Update Error:\n" + err.toString());
+            try { alert("❌ LumiCap Import/Update Error:\n" + err.toString()); } catch (eA) { }
         } finally {
-            // ALWAYS kill progress window (prevents stuck palette zombies)
-            if (prog) {
-                try {
-                    if (prog.forceClose) prog.forceClose();
-                    else if (prog.close) prog.close(); // fallback if you kept old API
-                } catch (e) { }
-            }
-
-            // ALWAYS end undo group if started
-            if (undoStarted) {
-                try { app.endUndoGroup(); } catch (e2) { }
-            }
+            if (prog) { try { prog.forceClose(); } catch (eF2) { } }
+            if (undoStarted) { try { app.endUndoGroup(); } catch (eU) { } }
         }
     })();
 })();
